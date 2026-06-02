@@ -1,0 +1,234 @@
+📱 ESPECIFICAÇÃO TÉCNICA COMPLETA: Copiloto de Vendas Varejo AI
+🏷️ METADADOS DO APLICATIVO
+
+app_name: "Copiloto de Vendas Varejo AI"
+version: "1.0.0"
+platform: "Mobile-First (iOS/Android via BASE44)"
+target_users: "Vendedores de loja física, gerentes de varejo, SDRs presenciais"
+language: "pt-BR"
+core_value: "Assistente offline-first que gera pitches, trata objeções, sugere alternativas e cria follow-ups via IA, com sincronização segura para CRM."
+
+
+🎯 PRD & ESCOPO (MVP)
+
+problem: "Vendedores perdem tempo buscando informações, travam em objeções, esquecem follow-ups e lidam com conexão instável em loja."
+solution: "App mobile com biblioteca de prompts offline, geração de respostas assistidas por IA, cache local e sincronização automática com CRM quando online."
+mvp_scope:
+  - "Seleção rápida de módulo (Abordagem, Objeção, Alternativa, Follow-up)"
+  - "Formulário dinâmico de contexto com variáveis pré-definidas"
+  - "Geração de resposta estruturada (copiar/colar ou usar verbalmente)"
+  - "Cache local criptografado e fila de sincronização"
+  - "Exportação CSV/JSON para CRM + consentimento LGPD"
+  - "Interface escaneável, otimizada para uso em 15-30s"
+non_goals_v1: "Integração direta com API de estoque em tempo real, reconhecimento de voz, pagamentos, IA de imagem."
+
+🗄️ MODELO DE DADOS (SCHEMA)
+{
+  "entities": {
+    "SalesInteraction": {
+      "fields": {
+        "id": "UUID",
+        "timestamp": "DATETIME",
+        "module_type": "ENUM['abordagem','objecao','alternativa','followup']",
+        "customer_name": "STRING (nullable)",
+        "customer_phone": "STRING (nullable, validated)",
+        "product_interest": "STRING",
+        "stage": "ENUM['prospect','qualifying','negotiating','post_visit']",
+        "objection_raw": "STRING (nullable)",
+        "stock_status": "ENUM['available','low','out_of_stock','unknown']",
+        "context_variables": "JSON",
+        "ai_response": "TEXT",
+        "is_synced": "BOOLEAN (default false)",
+        "lgpd_consent": "ENUM['whatsapp','email','none']",
+        "notes": "TEXT (nullable)"
+      },
+      "indexes": ["timestamp", "is_synced", "lgpd_consent"]
+    },
+    "PromptTemplate": {
+      "fields": {
+        "id": "UUID",
+        "name": "STRING",
+        "module_type": "ENUM",
+        "template_text": "TEXT",
+        "variables": "JSON",
+        "example_filled": "TEXT",
+        "is_active": "BOOLEAN"
+      }
+    },
+    "SyncQueue": {
+      "fields": {
+        "id": "UUID",
+        "interaction_id": "UUID (FK)",
+        "status": "ENUM['pending','syncing','success','failed']",
+        "retry_count": "INT",
+        "last_attempt": "DATETIME",
+        "error_message": "TEXT (nullable)"
+      }
+    }
+  }
+}
+
+
+🖥️ FLUXO DE TELAS & NAVEGAÇÃO
+
+screens:
+  HomeDashboard:
+    layout: "Grid 2x2 + Barra inferior"
+    components:
+      - "4 Cards de Módulo: 👋 Abordagem | 🛡️ Objeção | 🔄 Alternativa | 📅 Follow-up"
+      - "Status Offline/Online (badge)"
+      - "Fila de Sync (contador pendente)"
+      - "Botão Flutuante: ➕ Nova Interação Rápida"
+  
+  ContextInputForm:
+    layout: "Formulário dinâmico por módulo"
+    components:
+      - "Dropdown: Módulo Selecionado"
+      - "Campos adaptativos (ex: se 'Objeção' → mostra campo 'objecao_raw')"
+      - "Toggle: Consentimento LGPD"
+      - "Botão: 🤖 Gerar Resposta"
+  
+  AIResponseViewer:
+    layout: "Card editável + Ações"
+    components:
+      - "Texto gerado (formatado com bullets/quebras)"
+      - "Botões: 📋 Copiar | 💬 Abrir WhatsApp | 💾 Salvar Local | 🔄 Regenerar"
+      - "Aviso: ⚠️ Confirmar dados operacionais antes de enviar"
+  
+  SyncManager:
+    layout: "Lista + Status"
+    components:
+      - "Lista de interações pendentes"
+      - "Botão: 🔄 Sincronizar Agora"
+      - "Indicador de progresso / erros"
+      - "Opção: 📤 Exportar CSV/JSON"
+  
+  SettingsLGPD:
+    layout: "Configurações"
+    components:
+      - "Toggle: Auto-sync quando online"
+      - "Template de mensagem de consentimento"
+      - "Botão: 🗑️ Limpar cache local (com confirmação)"
+      - "Link: Política de Privacidade"
+
+
+🤖 CONFIGURAÇÃO DA IA (PROMPTS & REGRAS)
+
+ai_engine: "LLM API (OpenAI/Claude/Gemini) + Fallback Offline"
+master_prompt: |
+  🎭 PAPEL: Copiloto de Vendas Sênior especializado em varejo físico.
+  🎯 OBJETIVO: Gerar blocos curtos e acionáveis: abordagem, objeção, alternativa, follow-up.
+  📏 REGRAS:
+    • Tom: empático, ágil, consultivo. Sem jargões ou robótica.
+    • Formato: frases ≤2 linhas ou bullets curtos. Escaneável.
+    • Dados: NUNCA invente preço, estoque ou promoção. Use "⚠️ Confirmar na gerência".
+    • Ética: sem pressão, sem falsa urgência, sem promessas não autorizadas.
+    • Adaptação: ajuste ao perfil (jovem, casal, idoso, corporativo).
+    • Idioma: pt-BR.
+modules:
+  abordacao:
+    template: "[PERFIL]: {{perfil}} | [PRODUTO]: {{produto}} | [GANCHO]: {{ganho}} | Gere 👋 Abordagem (15s, máx 2 frases + 1 pergunta aberta)"
+  objecao:
+    template: "[OBJEÇÃO]: {{objecao}} | [PRODUTO]: {{produto}} | [DIFERENCIAIS]: {{dif1}}, {{dif2}} | Gere 🛡️ Resposta (valide, diferencie, convide)"
+  alternativa:
+    template: "[ORIGINAL]: {{original}} ({{falta}}) | [ALTERNATIVA]: {{alt}} ({{beneficio}}) | [NECESSIDADE]: {{need}} | Gere 🔄 Alternativa (transparente + solução + facilitador)"
+  followup:
+    template: "[CLIENTE]: {{nome}} | [PRODUTO]: {{prod}} | [GATILHO]: {{gatilho}} | [TIMING]: {{timing}} | Gere 📅 Follow-up (WhatsApp, tom amigável, CTA suave)"
+
+
+📴 ARQUITETURA OFFLINE & SINCRONIZAÇÃO
+
+offline_strategy: "Local-first cache com fila assíncrona"
+local_storage: "IndexedDB / SQLite (via BASE44 plugin)"
+sync_logic:
+  - "Salvar interação localmente ao gerar resposta"
+  - "Marcar is_synced = false"
+  - "Adicionar à SyncQueue"
+  - "Quando conexão disponível → processar fila em lote"
+  - "Em falha → retry exponencial (max 3x) + log de erro"
+  - "Sucesso → is_synced = true, remover da fila"
+conflict_resolution: "Timestamp-based merge. Cliente sempre prevalece."
+bandwidth_optimization: "Compressão JSON + delta sync (apenas campos alterados)"
+
+🔐 SEGURANÇA & LGPD
+
+data_minimization: "Coletar apenas nome/apelido, telefone, produto, estágio, consentimento"
+purpose_binding: "Uso exclusivo para follow-up, personalização e métricas de conversão"
+transparency_script: |
+  "Para te enviar novidades e ofertas personalizadas, 
+   posso anotar seu [nome/telefone]? 
+   🔹 É totalmente opcional | 🔹 Pode pedir exclusão a qualquer momento | 🔹 Usamos apenas para melhorar seu atendimento"
+consent_capture: "Dropdown: whatsapp | email | none | Armazenar timestamp + versão do script"
+right_to_erasure: "Endpoint local + API CRM: DELETE /contacts/{id} ao solicitar. Log de exclusão em 24h."
+encryption: "Dados em repouso: AES-256. Em trânsito: TLS 1.3."
+
+🔌 INTEGRAÇÕES
+
+whatsapp:
+  method: "Deep link: https://wa.me/{{phone}}?text={{encoded_message}}"
+  fallback: "Share intent nativo"
+crm_export:
+  format: "CSV + JSON"
+  mapping: "salesinteraction → contacts/deals (stage, product, next_step, lgpd)"
+  schedule: "Manual + auto-sync quando online"
+base44_plugins_required:
+  - "Local Storage / DB"
+  - "HTTP Request (CRM API)"
+  - "Share / Deep Link"
+  - "Network Status Listener"
+  - "LLM API Connector"
+
+📊 VALIDAÇÃO & MÉTRICAS (PARA DASHBOARD)
+
+kpi_tracking:
+  - "response_time_avg: target ≤ 15s"
+  - "followup_executed_48h: target ≥ 90%"
+  - "sync_success_rate: target ≥ 95%"
+  - "lgpd_compliance_rate: target 100%"
+  - "user_satisfaction: survey 1-5 pós-atendimento"
+ui_feedback: "Botão 👍/👎 na resposta gerada → log para ajuste de prompt"
+
+📦 JSON CONFIGURÁVEL PARA BASE44 (COPIAR E COLAR)
+
+{
+  "app_spec": {
+    "name": "Copiloto de Vendas Varejo AI",
+    "version": "1.0.0",
+    "platform": "mobile",
+    "language": "pt-BR",
+    "database": {
+      "entities": {
+        "SalesInteraction": ["id","timestamp","module_type","customer_name","customer_phone","product_interest","stage","objection_raw","stock_status","context_variables","ai_response","is_synced","lgpd_consent","notes"],
+        "PromptTemplate": ["id","name","module_type","template_text","variables","example_filled","is_active"],
+        "SyncQueue": ["id","interaction_id","status","retry_count","last_attempt","error_message"]
+      }
+    },
+    "screens": ["HomeDashboard","ContextInputForm","AIResponseViewer","SyncManager","SettingsLGPD"],
+    "ai_config": {
+      "master_prompt": "🎭 Copiloto de Vendas Varejo. 📏 Regras: tom empático, ≤2 linhas/bullet, NUNCA inventar dados, usar ⚠️ Confirmar na gerência, pt-BR.",
+      "modules": ["abordagem","objecao","alternativa","followup"],
+      "fallback": "offline_template_library"
+    },
+    "offline_sync": {
+      "strategy": "local_first_cache",
+      "queue_behavior": "async_batch_retry",
+      "conflict_resolution": "timestamp_merge"
+    },
+    "integrations": ["whatsapp_deep_link","csv_json_export","crm_api"],
+    "lgpd": {
+      "consent_capture": true,
+      "data_minimization": true,
+      "erasure_endpoint": true
+    },
+    "kpi_dashboard": ["response_time_avg","followup_rate","sync_success","lgpd_compliance","user_satisfaction"]
+  }
+}
+
+
+✅ Este arquivo contém 100% do material gerado, consolidado e pronto para geração de app.
+Se precisar de:
+🔹 base44_spec.json pronto para download
+🔹 Script de migração para CRM (HubSpot/RD/Pipedrive)
+🔹 Versão com reconhecimento de voz + IA de imagem (V2)
+
+
